@@ -2,6 +2,10 @@ import { JsonFileStore } from "./JsonFileStore.js";
 
 interface RoutingState {
   activeMode: string | null;
+  /** A model chosen via the Shift+Tab quick-switch, overriding the active
+   * mode's configured model until the mode changes or this expires - same
+   * lifecycle as activeMode, just one layer more specific. */
+  modelOverride: string | null;
   /** ISO timestamp of the last turn (dispatched or mode-switched), used to
    * expire sticky mode after inactivity rather than letting it persist
    * forever - an old manual /mode override should not silently keep
@@ -32,6 +36,7 @@ export class RoutingStateStore {
   ) {
     this.store = new JsonFileStore<RoutingState>(filePath, {
       activeMode: null,
+      modelOverride: null,
       lastActivityAt: null,
       recentPrompts: [],
     });
@@ -50,6 +55,17 @@ export class RoutingStateStore {
     return this.state.activeMode;
   }
 
+  /** Same expiry rules as activeMode - a quick-switched model shouldn't
+   * outlive the mode it was chosen within. */
+  get modelOverride(): string | null {
+    if (this.state.modelOverride === null) return null;
+    if (this.isExpired()) {
+      this.clearExpiredMode();
+      return null;
+    }
+    return this.state.modelOverride;
+  }
+
   get recentPrompts(): readonly string[] {
     return this.state.recentPrompts;
   }
@@ -64,6 +80,15 @@ export class RoutingStateStore {
 
   setActiveMode(mode: string): void {
     this.state.activeMode = mode;
+    // A new mode may imply a new agent, under which the previous model
+    // override might not even be valid - start fresh on model each time.
+    this.state.modelOverride = null;
+    this.state.lastActivityAt = new Date().toISOString();
+    this.store.save(this.state);
+  }
+
+  setModelOverride(model: string | null): void {
+    this.state.modelOverride = model;
     this.state.lastActivityAt = new Date().toISOString();
     this.store.save(this.state);
   }
@@ -85,6 +110,7 @@ export class RoutingStateStore {
 
   private clearExpiredMode(): void {
     this.state.activeMode = null;
+    this.state.modelOverride = null;
     this.store.save(this.state);
   }
 }

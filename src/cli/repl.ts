@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { emitKeypressEvents } from "node:readline";
 import chalk from "chalk";
 import type { Router } from "../routing/Router.js";
 import type { Dispatcher } from "../agents/Dispatcher.js";
@@ -12,6 +13,7 @@ import { renderStatus, renderModes } from "../ui/StatusPanel.js";
 import { LiveBox } from "../ui/LiveBox.js";
 import { agentColor } from "../ui/colors.js";
 import { CancelledError } from "../utils/spawn.js";
+import { getModelsForAgent, nextModel, nextMode } from "./modelCatalog.js";
 
 export interface ReplDeps {
   router: Router;
@@ -36,6 +38,18 @@ export async function runTurn(
     currentMode: deps.stateStore.activeMode,
   };
   const decision = await deps.router.resolve(ctx);
+
+  // A sticky quick-switch model (Shift+Tab) applies unless this turn
+  // explicitly forced its own model via "!model=", or the model doesn't
+  // even belong to whichever agent this turn resolved to (e.g. semantic
+  // routing picked a different mode/agent than the one the model was
+  // cycled for) - deliberate one-turn intent, and agent/model validity,
+  // both win over the standing quick-switch choice.
+  const stickyModel = deps.stateStore.modelOverride;
+  if (stickyModel && !decision.explicitModel) {
+    const validModels = getModelsForAgent(deps.modesFile, decision.agent);
+    if (validModels.includes(stickyModel)) decision.model = stickyModel;
+  }
 
   if (!decision.cleanedPrompt) {
     // A pure override, e.g. "/mode backend" with nothing else - just switch.
@@ -76,7 +90,9 @@ function buildPrompt(deps: ReplDeps): string {
   if (!mode) return chalk.cyan("you> ");
   const cfg = deps.modesFile.modes[mode];
   const agentTag = cfg ? agentColor(cfg.agent)(cfg.agent) : "";
-  return chalk.cyan(`you [${mode}${agentTag ? "·" + agentTag : ""}]> `);
+  const model = deps.stateStore.modelOverride ?? cfg?.model;
+  const tags = [mode, agentTag, model].filter(Boolean).join("·");
+  return chalk.cyan(`you [${tags}]> `);
 }
 
 const HELP_TEXT = [
@@ -91,6 +107,61 @@ const HELP_TEXT = [
   "  /exit            quit (prints cost summary)",
   "Ctrl+C cancels the current turn; Ctrl+C again while idle exits.",
 ].join("\n");
+
+/**
+ * Tab cycles through configured modes; Shift+Tab cycles through models
+ * valid for the current (or default) mode's agent. Both are quick
+ * shortcuts for what "/mode <name>" and "!model=<name>" already do -
+ * nothing here is a new routing mechanism, just a faster way to reach it.
+ * No-ops entirely on non-TTY input (piped stdin, tests) since raw keypress
+ * mode requires a real terminal.
+ */
+function setupQuickSwitchKeys(rl: ReturnType<typeof createInterface>, deps: ReplDeps): void {
+  const input = process.stdin;
+  if (!input.isTTY || typeof input.setRawMode !== "function") return;
+
+  // readline's own Interface already calls this internally for a TTY, but
+  // it's idempotent - calling it again just ensures our listener below
+  // sees keypress events regardless of that internal detail.
+  emitKeypressEvents(input);
+  input.setRawMode(true);
+
+  input.on("keypress", (_str, key) => {
+    if (!key || key.name !== "tab") return;
+
+    if (key.shift) {
+      const modeName = deps.stateStore.activeMode ?? deps.modesFile.default;
+      const modeCfg = deps.modesFile.modes[modeName];
+      const models = getModelsForAgent(deps.modesFile, modeCfg.agent);
+      const current = deps.stateStore.modelOverride ?? modeCfg.model;
+      const next = nextModel(models, current);
+      if (next && next !== current) {
+        deps.stateStore.setModelOverride(next);
+        redrawPrompt(rl, deps, `(model -> ${next})`);
+      }
+    } else {
+      const next = nextMode(deps.modesFile, deps.stateStore.activeMode);
+      deps.stateStore.setActiveMode(next);
+      redrawPrompt(rl, deps, `(mode -> ${next})`);
+    }
+  });
+}
+
+/** Redraws the prompt (and whatever the user had already typed) in place
+ * after a mode/model quick-switch, using readline's undocumented
+ * _refreshLine when available and falling back to a plain re-prompt
+ * otherwise (still functional, just less seamless). */
+function redrawPrompt(rl: ReturnType<typeof createInterface>, deps: ReplDeps, note: string): void {
+  rl.setPrompt(buildPrompt(deps));
+  const refresh = (rl as unknown as { _refreshLine?: () => void })._refreshLine;
+  if (typeof refresh === "function") {
+    console.log(chalk.dim("\n" + note));
+    refresh.call(rl);
+  } else {
+    console.log(chalk.dim(note));
+    rl.prompt();
+  }
+}
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
   const rl = createInterface({
@@ -122,6 +193,8 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     finish();
     process.exit(0);
   });
+
+  setupQuickSwitchKeys(rl, deps);
 
   console.log(chalk.dim(HELP_TEXT) + "\n");
   rl.prompt();

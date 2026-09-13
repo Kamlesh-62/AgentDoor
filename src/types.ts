@@ -73,6 +73,11 @@ export interface RoutingDecision {
   model: string;
   effort?: Effort;
   readOnly: boolean;
+  /** True only when this turn's prompt explicitly forced the model via
+   * "!model=" - lets a sticky quick-switch (Shift+Tab) model override
+   * apply everywhere else without clobbering a deliberate one-turn
+   * override. */
+  explicitModel?: boolean;
   source: RoutingSource;
   confidence?: number;
   reason?: string;

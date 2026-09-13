@@ -105,6 +105,7 @@ export class OverrideResolver implements ModeResolver {
       agent: parsed.agent ?? baseMode.agent,
       model: parsed.model ?? baseMode.model,
       effort: parsed.effort ?? baseMode.effort,
+      explicitModel: Boolean(parsed.model),
       readOnly: parsed.write ? false : (baseMode.readOnly ?? true),
       source: "override",
       reason: describeOverride(parsed),
