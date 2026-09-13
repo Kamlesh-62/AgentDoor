@@ -78,9 +78,16 @@ Every prompt goes through a chain, first confident answer wins:
    30 minutes of inactivity (configurable in `RoutingStateStore`), so an
    old manual `/mode` override from a previous session can't silently
    misroute an unrelated prompt much later.
-3. **LLM escalation** - only when ambiguous AND there's no sticky mode to
-   fall back on: a cheap `claude -p` call (haiku) makes the judgment call.
-   This is a real, billed call and its cost is tracked as an internal entry.
+3. **LLM escalation** - fires in two cases, not just one: when the semantic
+   match is ambiguous AND there's no sticky mode to fall back on, *or*
+   when a confident match is about to switch into a mode flagged
+   `expensive: true` in `modes.yaml` (e.g. `planning`: opus/high) -
+   confident isn't the same as correct, and being confidently wrong about
+   an expensive mode is exactly the costly failure mode this exists to
+   catch. Continuing in an already-active expensive mode skips this (no
+   re-confirmation every turn); switching into one from elsewhere doesn't.
+   A cheap `claude -p` call (haiku) makes the judgment call either way -
+   real, billed, tracked as an internal entry.
 4. **Default mode** - `modes.yaml`'s `default:` key, if nothing else matched.
 
 ## Tool permissions
