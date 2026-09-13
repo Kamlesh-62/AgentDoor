@@ -7,13 +7,16 @@ import type { UsageTracker } from "../usage/UsageTracker.js";
 import type { RoutingStateStore } from "../session/RoutingStateStore.js";
 import type { SessionStore } from "../session/SessionStore.js";
 import type { ModesFile } from "../types.js";
+import type { AgentRegistry } from "../agents/AgentRegistry.js";
 import { renderStatusLine } from "../ui/StatusLine.js";
 import { renderSessionSummary } from "../ui/SessionSummary.js";
 import { renderStatus, renderModes } from "../ui/StatusPanel.js";
 import { LiveBox } from "../ui/LiveBox.js";
 import { agentColor } from "../ui/colors.js";
 import { CancelledError } from "../utils/spawn.js";
+import { AgentUnavailableError } from "../agents/errors.js";
 import { getModelsForAgent, nextModel, nextMode } from "./modelCatalog.js";
+import { runDoctorChecks, renderDoctorReport } from "./doctor.js";
 
 export interface ReplDeps {
   router: Router;
@@ -22,6 +25,7 @@ export interface ReplDeps {
   stateStore: RoutingStateStore;
   sessionStore: SessionStore;
   modesFile: ModesFile;
+  registry: AgentRegistry;
 }
 
 /** Runs one turn end-to-end: route, (maybe) dispatch, record usage, report.
@@ -106,6 +110,7 @@ const HELP_TEXT = [
   "  /mode <name>     switch sticky mode",
   "  /status          show active mode, sessions, cost so far",
   "  /modes           list configured modes",
+  "  /doctor          check every agent's login/availability status",
   "  !claude / !codex force the agent for one turn",
   "  !model=<name>    force the model for one turn",
   "  !effort=<level>  force the effort for one turn",
@@ -252,12 +257,21 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       safePrompt(rl);
       continue;
     }
+    if (line === "/doctor") {
+      const results = await runDoctorChecks(deps.registry.all());
+      console.log("\n" + renderDoctorReport(results) + "\n");
+      safePrompt(rl);
+      continue;
+    }
 
     currentController = new AbortController();
     try {
       await runTurn(line, deps, currentController.signal);
     } catch (err) {
-      if (!(err instanceof CancelledError)) {
+      if (err instanceof AgentUnavailableError) {
+        // A known, actionable cause - plain statement, not a stack trace.
+        console.error(chalk.yellow(`⚠ ${err.message}`));
+      } else if (!(err instanceof CancelledError)) {
         console.error(chalk.red(`Error: ${(err as Error).message}`));
       }
       // CancelledError: the SIGINT handler already printed the notice.

@@ -1,0 +1,71 @@
+# Every agent AgentDoor can dispatch to. Nothing here is a fixed list -
+# claude/codex/grok are just the three that happen to be pre-configured.
+# To add ANY other model/CLI, add an entry under `generic:` below - no
+# TypeScript needed, as long as it's shaped roughly like
+# "binary [flags] <prompt>", optionally printing JSON. That covers most
+# coding-agent CLIs. If a CLI's output format is genuinely unusual (like
+# claude's streaming JSON events, or codex's JSONL), it needs a real
+# adapter class instead - see README.md "Adding a new agent".
+
+# Implemented as real classes (ClaudeAgent, CodexAgent) because their
+# output formats need bespoke parsing. Listed here only so `/doctor` and
+# docs know they exist - this list doesn't configure their behavior.
+builtin:
+  - claude
+  - codex
+
+# Wired up entirely from config, via GenericCliAgent - add your own agent
+# here, in the same shape as the grok entry below.
+generic:
+  grok:
+    binary: grok
+    # xAI's Grok Build CLI: `grok -p "<prompt>"` runs one prompt
+    # headlessly and returns the result (docs.x.ai/build/cli/reference).
+    promptMode: flag
+    promptFlag: "-p"
+    effortFlag: "--effort"
+    resumeFlag: "--resume"
+    extraArgs: ["--output-format", "json", "--no-auto-update"]
+    # --always-approve auto-executes tool calls (confirmed flag). No
+    # confirmed equivalent read-only flag exists yet for headless use -
+    # NOT VERIFIED against a real install (grok isn't installed in the
+    # environment this was built in). Leaving readOnlyArgs empty means
+    # "don't pass --always-approve", which per xAI's docs falls back to
+    # plan-first behavior (proposes changes as diffs rather than applying
+    # them) - a reasonable read-only approximation, but confirm this
+    # against a real grok install before relying on it.
+    readOnlyArgs: []
+    writeArgs: ["--always-approve"]
+    # Field names below are best-effort guesses following the same shape
+    # claude/codex use (result/session_id/usage.*) - NOT confirmed against
+    # real grok output. GenericCliAgent falls back to raw stdout as the
+    # answer text if these paths don't match, so a wrong guess degrades
+    # gracefully rather than breaking - but fix these once you've run it
+    # for real and seen the actual JSON shape.
+    fields:
+      text: result
+      sessionId: session_id
+      costUsd: cost_usd
+      inputTokens: usage.input_tokens
+      outputTokens: usage.output_tokens
+    # No confirmed free "am I logged in" subcommand for grok - falls back
+    # to checking for its credential file, which docs.x.ai/build confirms
+    # lives at ~/.grok/auth.json after login.
+    authFile: "~/.grok/auth.json"
+
+  # Add your own here, e.g. for any other CLI-based coding agent:
+  # my-agent:
+  #   binary: my-agent-cli
+  #   promptMode: positional      # prompt passed as a bare argument
+  #   modelFlag: "--model"
+  #   effortFlag: "--effort"
+  #   resumeFlag: "--resume"
+  #   extraArgs: ["--json"]
+  #   readOnlyArgs: ["--read-only"]
+  #   writeArgs: []
+  #   fields:
+  #     text: answer
+  #     sessionId: session_id
+  #   authCheckArgs: ["auth", "status"]
+  #   loggedInPattern: "logged in"
+  #   notLoggedInPattern: "not logged in"

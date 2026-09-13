@@ -1,6 +1,7 @@
 import type { AgentAdapter } from "./AgentAdapter.js";
-import type { AgentRunOptions, AgentRunResult } from "../types.js";
+import type { AgentRunOptions, AgentRunResult, AuthStatus } from "../types.js";
 import { runCommand } from "../utils/spawn.js";
+import { AgentUnavailableError } from "./errors.js";
 
 /**
  * Wraps the `codex exec` CLI in non-interactive JSONL mode (`--json`).
@@ -17,6 +18,40 @@ export class CodexAgent implements AgentAdapter {
   readonly name = "codex" as const;
 
   constructor(private readonly binary: string = "codex") {}
+
+  /** Free preflight: `codex login status` reads cached credentials, no
+   * model call. Confirmed live: prints "Logged in using ChatGPT" (or
+   * similar) when authenticated, exit 0. */
+  async checkAuth(): Promise<AuthStatus> {
+    let result;
+    try {
+      result = await runCommand(this.binary, ["login", "status"]);
+    } catch (err) {
+      return {
+        available: false,
+        reason: "not-installed",
+        message: `codex CLI not found: ${(err as Error).message}`,
+      };
+    }
+
+    // Confirmed live: codex prints this to stderr, not stdout.
+    const output = `${result.stdout}\n${result.stderr}`.trim();
+    if (/not logged in/i.test(output)) {
+      return {
+        available: false,
+        reason: "not-logged-in",
+        message: "codex is not logged in - run `codex login`",
+      };
+    }
+    if (/logged in/i.test(output)) {
+      return { available: true, message: output };
+    }
+    return {
+      available: false,
+      reason: "unknown",
+      message: `codex login status returned unexpected output: ${output.slice(0, 200)}`,
+    };
+  }
 
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     const args = ["exec"];
@@ -49,9 +84,18 @@ export class CodexAgent implements AgentAdapter {
     });
 
     if (exitCode !== 0) {
-      throw new Error(
-        `codex exited with code ${exitCode}: ${extractCodexError(stdout, stderr)}`,
-      );
+      const detail = extractCodexError(stdout, stderr);
+      if (/not logged in/i.test(detail)) {
+        throw new AgentUnavailableError("codex", "not-logged-in", "codex is not logged in - run `codex login`");
+      }
+      if (/usage limit|rate.?limit|quota/i.test(detail)) {
+        throw new AgentUnavailableError(
+          "codex",
+          "quota-exceeded",
+          "codex usage limit reached - check your plan or wait for it to reset",
+        );
+      }
+      throw new Error(`codex exited with code ${exitCode}: ${detail}`);
     }
 
     return parseCodexJsonl(stdout);
