@@ -34,6 +34,11 @@ npm start
 This drops you into a REPL - type prompts like a chat, no need to re-run
 the command per prompt. `/exit` to quit (prints a cost/token summary).
 
+The prompt itself shows what's currently active, e.g. `you [frontend·codex]>`
+- also available anytime via:
+- `/status` - active mode, both agents' session ids, cost so far this session
+- `/modes` - every configured mode and its agent/model/effort/permissions
+
 Or one-shot (single prompt, prints result, exits):
 
 ```
