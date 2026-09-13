@@ -96,7 +96,7 @@ function buildPrompt(deps: ReplDeps): string {
 }
 
 const HELP_TEXT = [
-  "agent-router ready. Commands:",
+  "AgentDoor ready. Commands:",
   "  /mode <name>     switch sticky mode",
   "  /status          show active mode, sessions, cost so far",
   "  /modes           list configured modes",

@@ -65,7 +65,7 @@ async function main() {
 
   const argPrompt = process.argv.slice(2).join(" ").trim();
   if (argPrompt) {
-    // One-shot mode: `agent-router "some prompt"`
+    // One-shot mode: `agentdoor "some prompt"`
     await runTurn(argPrompt, deps);
     console.log("\n" + renderSessionSummary(usageTracker.persistSessionSummary()));
     return;

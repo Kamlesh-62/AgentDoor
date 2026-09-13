@@ -1,11 +1,11 @@
 {
-  "name": "agent-router",
+  "name": "agentdoor",
   "version": "0.1.0",
   "description": "A local middleman CLI that routes prompts between the claude and codex terminal CLIs, picking agent/model/effort by mode + semantic similarity, tracking sessions and cost.",
   "type": "module",
   "private": true,
   "bin": {
-    "agent-router": "./dist/index.js"
+    "agentdoor": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",

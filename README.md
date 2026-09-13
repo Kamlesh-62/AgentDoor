@@ -1,7 +1,7 @@
-# agent-router
+# AgentDoor
 
 A local middleman CLI that sits in front of the `claude` and `codex`
-terminal CLIs. You talk to `agent-router`; it decides which agent, which
+terminal CLIs. You talk to AgentDoor; it decides which agent, which
 model, and how much effort to use for each prompt, then shells out to
 whichever CLI it picked - using each CLI's own login/session, never a raw
 API key.
@@ -54,8 +54,8 @@ npm start -- "why is this database query timing out"
 Or, after `npm link`, as a plain global command from anywhere:
 
 ```
-agent-router
-agent-router "why is this database query timing out"
+agentdoor
+agentdoor "why is this database query timing out"
 ```
 
 ## How routing works
