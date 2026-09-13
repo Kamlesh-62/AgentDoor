@@ -82,17 +82,23 @@ export async function runTurn(
   console.log(renderStatusLine(decision, result));
 }
 
-/** Builds the "you [mode·agent]>" prompt string reflecting current sticky
- * state, so you always know what the next prompt will route to without
- * waiting for a response. */
+/** Builds the prompt as a "chip": an agent-colored dot, the current
+ * mode·agent·model, and a divider - the terminal-native version of the
+ * composer's mode chip + edge accent (a box can't wrap live input in a
+ * readline prompt, so the color+divider carries the same "this is where
+ * it's headed" cue a glowing edge would in a browser). No mode set yet
+ * falls back to a plain, undecorated prompt - there's nothing to show. */
 function buildPrompt(deps: ReplDeps): string {
   const mode = deps.stateStore.activeMode;
-  if (!mode) return chalk.cyan("you> ");
+  if (!mode) return chalk.dim("› ");
+
   const cfg = deps.modesFile.modes[mode];
-  const agentTag = cfg ? agentColor(cfg.agent)(cfg.agent) : "";
-  const model = deps.stateStore.modelOverride ?? cfg?.model;
-  const tags = [mode, agentTag, model].filter(Boolean).join("·");
-  return chalk.cyan(`you [${tags}]> `);
+  if (!cfg) return chalk.dim("› ");
+
+  const color = agentColor(cfg.agent);
+  const model = deps.stateStore.modelOverride ?? cfg.model;
+  const chip = [mode, cfg.agent, model].join("·");
+  return color("●") + " " + color(chip) + chalk.dim(" │ ");
 }
 
 const HELP_TEXT = [
