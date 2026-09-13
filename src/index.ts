@@ -61,7 +61,7 @@ async function main() {
 
   const dispatcher = new Dispatcher(registry, sessionStore, process.cwd());
 
-  const deps = { router, dispatcher, usageTracker, stateStore };
+  const deps = { router, dispatcher, usageTracker, stateStore, sessionStore, modesFile };
 
   const argPrompt = process.argv.slice(2).join(" ").trim();
   if (argPrompt) {

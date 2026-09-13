@@ -4,9 +4,13 @@ import type { Router } from "../routing/Router.js";
 import type { Dispatcher } from "../agents/Dispatcher.js";
 import type { UsageTracker } from "../usage/UsageTracker.js";
 import type { RoutingStateStore } from "../session/RoutingStateStore.js";
+import type { SessionStore } from "../session/SessionStore.js";
+import type { ModesFile } from "../types.js";
 import { renderStatusLine } from "../ui/StatusLine.js";
 import { renderSessionSummary } from "../ui/SessionSummary.js";
+import { renderStatus, renderModes } from "../ui/StatusPanel.js";
 import { LiveBox } from "../ui/LiveBox.js";
+import { agentColor } from "../ui/colors.js";
 import { CancelledError } from "../utils/spawn.js";
 
 export interface ReplDeps {
@@ -14,6 +18,8 @@ export interface ReplDeps {
   dispatcher: Dispatcher;
   usageTracker: UsageTracker;
   stateStore: RoutingStateStore;
+  sessionStore: SessionStore;
+  modesFile: ModesFile;
 }
 
 /** Runs one turn end-to-end: route, (maybe) dispatch, record usage, report.
@@ -45,7 +51,7 @@ export async function runTurn(
     (message) => liveBox.event(message),
     signal,
   );
-  liveBox.end();
+  liveBox.end(decision);
 
   deps.usageTracker.record({
     agent: decision.agent,
@@ -62,11 +68,35 @@ export async function runTurn(
   console.log(renderStatusLine(decision, result));
 }
 
+/** Builds the "you [mode·agent]>" prompt string reflecting current sticky
+ * state, so you always know what the next prompt will route to without
+ * waiting for a response. */
+function buildPrompt(deps: ReplDeps): string {
+  const mode = deps.stateStore.activeMode;
+  if (!mode) return chalk.cyan("you> ");
+  const cfg = deps.modesFile.modes[mode];
+  const agentTag = cfg ? agentColor(cfg.agent)(cfg.agent) : "";
+  return chalk.cyan(`you [${mode}${agentTag ? "·" + agentTag : ""}]> `);
+}
+
+const HELP_TEXT = [
+  "agent-router ready. Commands:",
+  "  /mode <name>     switch sticky mode",
+  "  /status          show active mode, sessions, cost so far",
+  "  /modes           list configured modes",
+  "  !claude / !codex force the agent for one turn",
+  "  !model=<name>    force the model for one turn",
+  "  !effort=<level>  force the effort for one turn",
+  "  !write           allow this turn to run commands/edit files",
+  "  /exit            quit (prints cost summary)",
+  "Ctrl+C cancels the current turn; Ctrl+C again while idle exits.",
+].join("\n");
+
 export async function startRepl(deps: ReplDeps): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: chalk.cyan("you> "),
+    prompt: buildPrompt(deps),
   });
 
   let finished = false;
@@ -93,12 +123,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     process.exit(0);
   });
 
-  console.log(
-    chalk.dim(
-      "agent-router ready. Commands: /mode <name>, !claude, !codex, !model=<name>, " +
-        "!effort=<level>, !write, /exit. Ctrl+C cancels the current turn; Ctrl+C again (idle) exits.\n",
-    ),
-  );
+  console.log(chalk.dim(HELP_TEXT) + "\n");
   rl.prompt();
 
   for await (const rawLine of rl) {
@@ -108,6 +133,22 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       continue;
     }
     if (line === "/exit" || line === "/quit") break;
+
+    if (line === "/status") {
+      console.log(
+        "\n" +
+          renderStatus(deps.modesFile, deps.stateStore, deps.sessionStore, deps.usageTracker) +
+          "\n",
+      );
+      rl.setPrompt(buildPrompt(deps));
+      rl.prompt();
+      continue;
+    }
+    if (line === "/modes") {
+      console.log("\n" + renderModes(deps.modesFile) + "\n");
+      rl.prompt();
+      continue;
+    }
 
     currentController = new AbortController();
     try {
@@ -120,6 +161,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     } finally {
       currentController = null;
     }
+    rl.setPrompt(buildPrompt(deps)); // reflects any mode change from this turn
     rl.prompt();
   }
 

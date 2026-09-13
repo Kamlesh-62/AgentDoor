@@ -1,29 +1,29 @@
 import chalk from "chalk";
 import type { RoutingDecision } from "../types.js";
+import { agentColor } from "./colors.js";
 
 /**
  * One agent runs per turn (routing already picked it), so this is a single
  * live indicator, not a two-pane split - it just labels whichever agent is
  * currently active and streams its progress underneath, replacing the
- * previous silence-until-done behavior.
+ * previous silence-until-done behavior. Colored per-agent so which one is
+ * running is recognizable at a glance without reading the label.
  */
 export class LiveBox {
-  private lineCount = 0;
-
   start(decision: RoutingDecision): void {
-    const header = [`${decision.agent}`, `${decision.model}`];
+    const color = agentColor(decision.agent);
+    const header = [decision.agent, decision.model];
     if (decision.effort) header.push(`effort:${decision.effort}`);
-    console.log(chalk.cyan(`\n┌─ ${header.join(" · ")} ─`));
-    this.lineCount = 0;
+    if (!decision.readOnly) header.push("write-enabled");
+    console.log(color(`\n┌─ ${header.join(" · ")} ─`));
   }
 
   /** Prints one live progress line under the header. */
   event(message: string): void {
     console.log(chalk.dim(`│ ${message}`));
-    this.lineCount++;
   }
 
-  end(): void {
-    console.log(chalk.cyan("└─"));
+  end(decision: RoutingDecision): void {
+    console.log(agentColor(decision.agent)("└─"));
   }
 }

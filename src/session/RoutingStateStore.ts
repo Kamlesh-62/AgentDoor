@@ -54,6 +54,14 @@ export class RoutingStateStore {
     return this.state.recentPrompts;
   }
 
+  /** Milliseconds until sticky mode expires, or null if no mode is set
+   * (already expired, or never set) - for /status display. */
+  get stickyMsRemaining(): number | null {
+    if (this.state.activeMode === null || !this.state.lastActivityAt) return null;
+    const remaining = this.stickyTtlMs - (Date.now() - Date.parse(this.state.lastActivityAt));
+    return remaining > 0 ? remaining : null;
+  }
+
   setActiveMode(mode: string): void {
     this.state.activeMode = mode;
     this.state.lastActivityAt = new Date().toISOString();
