@@ -105,7 +105,7 @@ const HELP_TEXT = [
   "  !effort=<level>  force the effort for one turn",
   "  !write           allow this turn to run commands/edit files",
   "  /exit            quit (prints cost summary)",
-  "Ctrl+C cancels the current turn; Ctrl+C again while idle exits.",
+  "Ctrl+C cancels the current turn; press it twice quickly while idle to exit.",
 ].join("\n");
 
 /**
@@ -192,9 +192,14 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
 
   // Tracks the currently in-flight turn's controller, if any. First
   // Ctrl+C while a turn is running cancels just that turn (kills the
-  // subprocess, stays in the REPL); Ctrl+C while idle exits normally -
-  // matches ordinary shell muscle memory (cancel job vs. quit shell).
+  // subprocess, stays in the REPL). While idle, a single Ctrl+C no longer
+  // exits immediately - it warns and arms a short window; only a second
+  // Ctrl+C within that window actually exits, matching the "press again to
+  // exit" convention most REPLs use so one accidental Ctrl+C doesn't lose
+  // your session.
   let currentController: AbortController | null = null;
+  const EXIT_CONFIRM_WINDOW_MS = 2000;
+  let idleSigintAt: number | null = null;
 
   process.on("SIGINT", () => {
     if (currentController && !currentController.signal.aborted) {
@@ -202,8 +207,15 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       console.log(chalk.yellow("\n(cancelled - subprocess stopped)"));
       return;
     }
-    finish();
-    process.exit(0);
+
+    const now = Date.now();
+    if (idleSigintAt && now - idleSigintAt < EXIT_CONFIRM_WINDOW_MS) {
+      finish();
+      process.exit(0);
+    }
+    idleSigintAt = now;
+    console.log(chalk.yellow("\n(press Ctrl+C again to exit)"));
+    safePrompt(rl);
   });
 
   setupQuickSwitchKeys(rl, deps);

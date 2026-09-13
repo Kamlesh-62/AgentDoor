@@ -104,8 +104,9 @@ the mode, prefix the prompt with `!write`.
 
 Ctrl+C while a turn is running cancels just that turn (kills the
 subprocess, prints a notice, stays in the REPL) instead of exiting the
-whole tool. Ctrl+C again while idle exits normally - same as cancelling a
-foreground job vs. quitting a shell.
+whole tool. Ctrl+C while idle warns and arms a 2-second window - only a
+second Ctrl+C within that window actually exits, so one accidental press
+doesn't lose your session.
 
 ## Configuration
 
