@@ -1,0 +1,26 @@
+{
+  "name": "agent-router",
+  "version": "0.1.0",
+  "description": "A local middleman CLI that routes prompts between the claude and codex terminal CLIs, picking agent/model/effort by mode + semantic similarity, tracking sessions and cost.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "agent-router": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "routing-check": "node scripts/routing-check.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

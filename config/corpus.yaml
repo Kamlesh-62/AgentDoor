@@ -1,0 +1,40 @@
+# Example utterances per mode, used for local semantic (TF-IDF cosine) routing.
+# Add more examples over time from real usage - the more varied, the better
+# the routing gets. No keywords/regex here on purpose: matching is by
+# vector similarity over the whole sentence, not substring/keyword hits.
+
+backend:
+  - "add a new REST endpoint for user authentication"
+  - "why is this database query so slow"
+  - "fix the migration script that's failing"
+  - "write a background job to process the queue"
+  - "add validation to the API request payload"
+  - "debug why the server is returning a 500 error"
+  - "optimize this SQL query"
+  - "set up a cron job to clean old records"
+
+frontend:
+  - "the button isn't aligned properly on mobile"
+  - "make this component reusable across pages"
+  - "the modal doesn't close when clicking outside"
+  - "improve the loading state of this page"
+  - "fix the CSS so the layout doesn't break on small screens"
+  - "add a dark mode toggle to the UI"
+  - "the form validation message isn't showing"
+  - "make this animation smoother"
+
+planning:
+  - "how should we structure this new feature"
+  - "what are the tradeoffs between these two approaches"
+  - "help me design the architecture for this system"
+  - "let's think through the roadmap for this project"
+  - "what's the best way to break this epic into tasks"
+  - "review this design doc and point out risks"
+  - "should we use approach A or approach B here, and why"
+
+quick:
+  - "what does this error mean"
+  - "just tell me the syntax for this"
+  - "quick question about this function"
+  - "what's the difference between these two"
+  - "give me a one-line answer"

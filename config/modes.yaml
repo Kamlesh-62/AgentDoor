@@ -1,0 +1,31 @@
+# Predefined modes. Each mode bundles {agent, model, effort}.
+# "default" names the mode used when nothing else matches (no override,
+# no confident semantic match, no successful escalation).
+#
+# agent: "claude" | "codex"
+# model: passed straight to the CLI's --model / -m flag (alias or full name)
+# effort: only meaningfully applied to claude today (--effort). Ignored
+#         (logged, not passed) for codex until its effort mapping is confirmed.
+
+default: quick
+
+modes:
+  backend:
+    agent: claude
+    model: sonnet
+    effort: medium
+
+  frontend:
+    agent: codex
+    model: gpt-5.1-codex
+    effort: medium
+
+  planning:
+    agent: claude
+    model: opus
+    effort: high
+
+  quick:
+    agent: claude
+    model: haiku
+    effort: low
