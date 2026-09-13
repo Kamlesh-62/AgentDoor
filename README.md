@@ -56,6 +56,8 @@ Every prompt goes through a chain, first confident answer wins:
    - `!claude` / `!codex` - force the agent for this turn only
    - `!model=opus` - force the model for this turn only
    - `!effort=high` - force the effort for this turn only
+   - `!write` - allow this turn to run commands/edit files (see "Tool
+     permissions" below); doesn't change the mode's stored config
    - These combine: `!codex !effort=high fix the flaky test`
 2. **Semantic (embedding) match** - the prompt (plus a few recent prompts
    for context) is compared via cosine similarity to each mode's example
@@ -69,6 +71,23 @@ Every prompt goes through a chain, first confident answer wins:
    fall back on: a cheap `claude -p` call (haiku) makes the judgment call.
    This is a real, billed call and its cost is tracked as an internal entry.
 4. **Default mode** - `modes.yaml`'s `default:` key, if nothing else matched.
+
+## Tool permissions
+
+No human is available to approve a permission prompt when an agent runs
+headlessly, so every mode is **read-only by default** (Claude gets
+`--restricted`, stripping Bash/Edit/Write; Codex gets `--sandbox
+read-only`) - they can look at things but can't run commands or change
+files. To let a specific mode make real changes, set `readOnly: false` on
+it in `config/modes.yaml`; to allow it for one turn only without changing
+the mode, prefix the prompt with `!write`.
+
+## Cancelling a turn
+
+Ctrl+C while a turn is running cancels just that turn (kills the
+subprocess, prints a notice, stays in the REPL) instead of exiting the
+whole tool. Ctrl+C again while idle exits normally - same as cancelling a
+foreground job vs. quitting a shell.
 
 ## Configuration
 
