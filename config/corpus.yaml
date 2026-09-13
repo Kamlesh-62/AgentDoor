@@ -38,3 +38,8 @@ quick:
   - "quick question about this function"
   - "what's the difference between these two"
   - "give me a one-line answer"
+  - "fetch this url and summarize it"
+  - "read this article and tell me what it says"
+  - "what does this webpage say"
+  - "can you look at this link and explain it"
+  - "search the web for the latest version of this library"

@@ -34,6 +34,10 @@ export class CodexAgent implements AgentAdapter {
     // read-only (default true) keeps codex from writing or running
     // anything outside its own sandboxed read access.
     args.push("--sandbox", options.readOnly !== false ? "read-only" : "workspace-write");
+    // web_search is a separate config axis from the shell sandbox above -
+    // fetching/reading a URL is safe under read-only and shouldn't be
+    // blocked by it, so this is always on regardless of readOnly.
+    args.push("-c", "web_search=live");
 
     const { stdout, stderr, exitCode } = await runCommand(this.binary, args, {
       cwd: options.cwd,

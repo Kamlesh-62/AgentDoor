@@ -24,9 +24,15 @@ export class ClaudeAgent implements AgentAdapter {
     if (options.model) args.push("--model", options.model);
     if (options.effort) args.push("--effort", options.effort);
     if (options.resumeSessionId) args.push("--resume", options.resumeSessionId);
-    // No human available to approve tool-permission prompts headlessly -
-    // read-only (default true) strips Bash/Edit/Write etc. entirely.
-    if (options.readOnly !== false) args.push("--restricted");
+    // No human available to approve tool-permission prompts headlessly.
+    // --restricted strips ALL tools, including safe, non-mutating ones
+    // like WebFetch/WebSearch - which broke "read this URL and summarize
+    // it" style prompts entirely. Read-only (default true) instead
+    // allowlists specifically the tools that can't change anything on
+    // disk or run commands; readOnly:false lifts the allowlist entirely.
+    if (options.readOnly !== false) {
+      args.push("--allowedTools", "Read,Grep,Glob,WebFetch,WebSearch");
+    }
 
     const { stdout, stderr, exitCode } = await runCommand(this.binary, args, {
       cwd: options.cwd,
