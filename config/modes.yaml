@@ -2,15 +2,48 @@
 # "default" names the mode used when nothing else matches (no override,
 # no confident semantic match, no successful escalation).
 #
-# agent: "claude" | "codex"
-# model: passed straight to the CLI's --model / -m flag (alias or full name)
-# effort: only meaningfully applied to claude today (--effort). Ignored
-#         (logged, not passed) for codex until its effort mapping is confirmed.
-# expensive: true means EmbeddingResolver won't auto-switch into this mode
+# ── Fields ───────────────────────────────────────────────────────────────
+# agent:     any registered agent name - "claude", "codex", "grok", or
+#            anything you've added to config/agents.yaml. Not a fixed enum.
+# model:     passed straight to the CLI's --model / -m / --effort-style flag
+# effort:    "low" | "medium" | "high" | "xhigh" | "max". Fully supported by
+#            claude's --effort. For codex, passed as
+#            -c model_reasoning_effort=<level> (see CodexAgent.ts - an
+#            assumption about codex's config schema, not a confirmed flag).
+#            For grok, passed as --effort (confirmed flag exists per
+#            docs.x.ai/build/cli/reference, exact value semantics unverified
+#            locally - see config/agents.yaml).
+# readOnly:  omit or true = no Bash/Edit/Write-equivalent tools (see
+#            "Tool permissions" in README). false = this mode may run
+#            commands/write files.
+# expensive: true means EmbeddingResolver won't auto-switch INTO this mode
 #            on a confident-but-unconfirmed semantic match alone - it defers
-#            to the cheap LLM classifier for a second opinion first. Set
-#            this on any mode costly enough that a wrong guess is expensive
-#            (opus, high effort, etc).
+#            to the cheap LLM classifier for a second opinion first (see
+#            README "How routing works", step 3).
+#
+# ── Which model, when (Anthropic's own published guidance) ─────────────
+# Sonnet   - the default for most professional work: drafting/editing,
+#            everyday coding, summarizing, most chat - a great answer
+#            quickly without flagship pricing.
+# Opus     - the top tier: hard reasoning, complex code, long agentic work
+#            where an early mistake compounds. Reach for it when the task
+#            is genuinely hard and a better answer is worth the cost -
+#            not for routine work.
+# Haiku    - fastest and cheapest ($1/$5 per 1M tokens as of this writing):
+#            classifying/tagging at scale, simple extraction, quick
+#            lookups, high-throughput or latency-sensitive work. Use it
+#            when speed/cost matter more than squeezing out the last few
+#            points of quality.
+# (Codex/gpt-* and grok-* models don't have an equivalently published
+# "which tier for which task" guide as of this writing - backend/frontend
+# below follow the same underlying principle: routine, well-scoped work
+# gets a mid-tier model, not a flagship one, until real usage says otherwise.)
+#
+# ── Effort levels ────────────────────────────────────────────────────────
+# low/medium map to "don't overthink routine work"; high/xhigh/max trade
+# latency and cost for more thorough reasoning - reserve them for modes
+# already flagged `expensive: true`, or you're paying flagship prices for
+# routine questions.
 
 default: quick
 
@@ -19,19 +52,37 @@ modes:
     agent: claude
     model: sonnet
     effort: medium
+    # Everyday API/server/data work: Sonnet is Anthropic's own recommended
+    # default for this kind of task - not under-powered, not flagship-priced.
 
   frontend:
     agent: codex
     model: gpt-6-astra
     effort: medium
+    # Routed to codex rather than claude by deliberate choice (not because
+    # codex is "the frontend model") - see corpus.yaml for why this mode
+    # exists as a distinct routing target at all.
 
   planning:
     agent: claude
     model: opus
     effort: high
     expensive: true
+    # Architecture/tradeoff/roadmap questions are exactly Opus's stated
+    # use case (hard reasoning, long agentic work, mistakes compound) -
+    # and exactly why this is the one mode flagged `expensive`.
 
   quick:
     agent: claude
     model: haiku
     effort: low
+    # High-volume, low-stakes turns: quick lookups, casual/meta questions,
+    # fetch-and-summarize requests - Haiku's stated sweet spot.
+
+  # Example of adding a mode for a newly-configured agent (see
+  # config/agents.yaml) - commented out since grok isn't installed/logged
+  # in on every machine this config might run on; uncomment once it is:
+  # research:
+  #   agent: grok
+  #   model: grok-4
+  #   effort: medium

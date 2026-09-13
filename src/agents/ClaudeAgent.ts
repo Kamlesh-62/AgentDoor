@@ -1,6 +1,7 @@
 import type { AgentAdapter } from "./AgentAdapter.js";
-import type { AgentRunOptions, AgentRunResult } from "../types.js";
+import type { AgentRunOptions, AgentRunResult, AuthStatus } from "../types.js";
 import { runCommand } from "../utils/spawn.js";
+import { AgentUnavailableError, classifyUnavailable } from "./errors.js";
 
 /**
  * Wraps the `claude` CLI in non-interactive (--print) streaming mode.
@@ -18,6 +19,40 @@ export class ClaudeAgent implements AgentAdapter {
   readonly name = "claude" as const;
 
   constructor(private readonly binary: string = "claude") {}
+
+  /** Free preflight: `claude auth status` makes no model call, just reads
+   * cached credentials. Confirmed live: returns JSON with a `loggedIn`
+   * boolean and exits 0 either way. */
+  async checkAuth(): Promise<AuthStatus> {
+    let result;
+    try {
+      result = await runCommand(this.binary, ["auth", "status"]);
+    } catch (err) {
+      return {
+        available: false,
+        reason: "not-installed",
+        message: `claude CLI not found: ${(err as Error).message}`,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(result.stdout);
+      if (parsed.loggedIn === true) {
+        return { available: true, message: `logged in as ${parsed.email ?? "unknown user"}` };
+      }
+      return {
+        available: false,
+        reason: "not-logged-in",
+        message: "claude is not logged in - run `claude auth login`",
+      };
+    } catch {
+      return {
+        available: false,
+        reason: "unknown",
+        message: `claude auth status returned unexpected output: ${result.stdout.slice(0, 200)}`,
+      };
+    }
+  }
 
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     const args = ["-p", options.prompt, "--output-format", "stream-json", "--verbose"];
@@ -44,9 +79,32 @@ export class ClaudeAgent implements AgentAdapter {
     });
 
     if (exitCode !== 0) {
-      throw new Error(
-        `claude exited with code ${exitCode}: ${stderr.trim() || "(no stderr)"}`,
-      );
+      const combined = `${stdout}\n${stderr}`;
+      // Best-effort patterns - not confirmed against a real quota/auth
+      // failure the way the success path was, since triggering one on
+      // purpose isn't practical. Loosen/tighten these as real failures
+      // are observed; they only affect the error MESSAGE shown, never
+      // whether the call itself succeeds.
+      const reason = classifyUnavailable(combined, [
+        {
+          reason: "not-logged-in",
+          matches: [/not logged in/i, /please (run|log in)/i, /authentication/i, /unauthorized/i],
+        },
+        {
+          reason: "quota-exceeded",
+          matches: [/usage limit/i, /rate.?limit/i, /credit balance/i, /quota/i],
+        },
+      ]);
+      if (reason) {
+        throw new AgentUnavailableError(
+          "claude",
+          reason,
+          reason === "not-logged-in"
+            ? "claude is not logged in - run `claude auth login`"
+            : "claude usage limit reached - check your plan or wait for it to reset",
+        );
+      }
+      throw new Error(`claude exited with code ${exitCode}: ${stderr.trim() || "(no stderr)"}`);
     }
 
     return parseClaudeStream(stdout);

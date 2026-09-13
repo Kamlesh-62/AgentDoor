@@ -4,7 +4,16 @@
  * speaks the same vocabulary without importing from each other.
  */
 
-export type AgentName = "claude" | "codex";
+/**
+ * Open set on purpose: adding a new backend (e.g. grok) means writing a
+ * class and registering it (see AgentRegistry) - it should never require
+ * widening a closed union here too. KNOWN_AGENTS below is just the
+ * built-in defaults for documentation/validation messages, not an
+ * exhaustive list.
+ */
+export type AgentName = string;
+
+export const KNOWN_AGENTS = ["claude", "codex", "grok"] as const;
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -51,6 +60,23 @@ export interface AgentRunOptions {
   readOnly?: boolean;
   /** Aborting this cancels the in-flight CLI subprocess. */
   signal?: AbortSignal;
+}
+
+/** Why an agent can't currently be used - checked before spending money on
+ * a real dispatch, and used to classify a dispatch failure after the
+ * fact when a preflight check wasn't run or wasn't conclusive. */
+export type UnavailableReason =
+  | "not-installed"
+  | "not-logged-in"
+  | "quota-exceeded"
+  | "unknown";
+
+export interface AuthStatus {
+  available: boolean;
+  /** Present only when available is false. */
+  reason?: UnavailableReason;
+  /** Human-readable, always safe to print directly - no stack traces. */
+  message: string;
 }
 
 /** What an agent adapter reports back after a turn. */

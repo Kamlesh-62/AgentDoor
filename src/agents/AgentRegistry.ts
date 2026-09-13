@@ -23,4 +23,10 @@ export class AgentRegistry {
     }
     return adapter;
   }
+
+  /** For /doctor and startup checks - every agent actually registered,
+   * regardless of whether any mode currently references it. */
+  all(): AgentAdapter[] {
+    return [...this.adapters.values()];
+  }
 }

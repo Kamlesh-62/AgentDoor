@@ -1,10 +1,12 @@
 # AgentDoor
 
-A local middleman CLI that sits in front of the `claude` and `codex`
-terminal CLIs. You talk to AgentDoor; it decides which agent, which
-model, and how much effort to use for each prompt, then shells out to
-whichever CLI it picked - using each CLI's own login/session, never a raw
-API key.
+A local middleman CLI that sits in front of terminal-based coding agent
+CLIs - `claude` and `codex` out of the box, and any other CLI-based agent
+(Grok Build, or anything else) you add to `config/agents.yaml`, no code
+required for most of them. You talk to AgentDoor; it decides which agent,
+which model, and how much effort to use for each prompt, then shells out
+to whichever CLI it picked - using each CLI's own login/session, never a
+raw API key.
 
 ## Why
 
@@ -110,8 +112,13 @@ doesn't lose your session.
 
 ## Configuration
 
-- `config/modes.yaml` - named presets: `{agent, model, effort}` per mode,
-  plus which mode is the default.
+- `config/modes.yaml` - named presets: `{agent, model, effort, readOnly,
+  expensive}` per mode, plus which mode is the default. Richly commented
+  with when-to-use-which-model guidance (Anthropic's own published Sonnet/
+  Opus/Haiku guidance, summarized inline) - read it before adding a mode.
+- `config/agents.yaml` - which agents exist: `claude`/`codex` (real
+  classes) plus anything under `generic:` (config-only, see "Adding a new
+  agent"). This is the actual "add any model" surface.
 - `config/corpus.yaml` - example utterances per mode, used for semantic
   routing. Add more real examples over time; no keywords/regex needed.
 - `config/pricing.yaml` - approximate $/1M token rates, used to estimate
@@ -127,23 +134,93 @@ doesn't lose your session.
 - `usage-log.jsonl` - one line per completed session: turns, tokens, and
   approximate cost per agent/model.
 
-## Extending
+## Adding a new agent
 
-The codebase is deliberately Open/Closed at three seams:
+Not a fixed list of three. Two ways in, depending on the CLI's shape:
 
-- **New backend agent**: implement `AgentAdapter` (see `ClaudeAgent.ts`),
-  register it in `index.ts`. Nothing else changes.
+**Most CLIs - no code, just YAML.** If it's shaped like
+`binary [flags] <prompt>`, optionally printing JSON, add it to
+`config/agents.yaml` under `generic:`. `GenericCliAgent` drives it purely
+from that config: which flag carries the prompt/model/effort/resume,
+which flags to add for read-only vs. write mode, and (if it prints JSON)
+dot-notation paths to the answer/session-id/cost/token fields. See the
+`grok` entry in that file for a real worked example - Grok Build's whole
+integration is config, zero TypeScript.
+
+```yaml
+generic:
+  my-agent:
+    binary: my-agent-cli
+    promptMode: positional      # or "flag" + promptFlag: "-p"
+    modelFlag: "--model"
+    effortFlag: "--effort"
+    resumeFlag: "--resume"
+    extraArgs: ["--json"]
+    readOnlyArgs: ["--read-only"]
+    writeArgs: []
+    fields: { text: answer, sessionId: session_id }
+    authCheckArgs: ["auth", "status"]      # optional - see below
+    loggedInPattern: "logged in"
+    notLoggedInPattern: "not logged in"
+```
+
+Then reference it from `config/modes.yaml` like any other agent:
+`agent: my-agent`.
+
+**CLIs with a genuinely unusual output format** (streaming JSON events
+like claude, JSONL like codex) need a real class: implement `AgentAdapter`
+(see `ClaudeAgent.ts`), register it in `index.ts`. Nothing else changes -
+Router/Dispatcher only ever depend on the interface.
+
+Two more Open/Closed seams, unrelated to agents:
+
 - **New routing strategy**: implement `ModeResolver`, insert it into the
   chain built in `index.ts`. Nothing else changes.
 - **Real neural embeddings instead of TF-IDF**: implement
   `EmbeddingProvider` (see `TfIdfEmbeddingProvider.ts`), swap it in
   `index.ts`. `EmbeddingResolver` never changes.
 
+## Checking whether an agent is actually usable
+
+`/doctor` runs every registered agent's free preflight check (no model
+call, ever) and reports what it finds:
+
+```
+Agent status:
+  ✓ claude     logged in as you@example.com
+  ✓ codex      Logged in using ChatGPT
+  ✗ grok       grok CLI ("grok") not found on PATH
+```
+
+This also runs quietly at startup, but only for agents a configured mode
+actually uses - it won't warn about grok being uninstalled if nothing
+routes to it. If a dispatch fails partway through for a recognizable
+reason (not logged in, usage limit/quota reached), you get that plain
+message instead of a raw CLI stack trace - e.g. `⚠ codex is not logged in
+- run \`codex login\``. Anything not recognizable still surfaces as a
+normal error; this only covers the cases each adapter knows how to name.
+
+Preflight checks used, all free:
+- `claude` - `claude auth status` (JSON, `loggedIn` field)
+- `codex` - `codex login status` (prints to **stderr**, not stdout)
+- `grok` - no confirmed free status command; checks for its credential
+  file at `~/.grok/auth.json` instead
+- any `generic:` agent - `authCheckArgs` + regex patterns if configured,
+  else just confirms the binary resolves
+
 ## Known limitations (prototype, by design)
 
 - `codex`'s effort mapping (`-c model_reasoning_effort=<level>`) is an
   assumption about its config schema, isolated to `CodexAgent.ts` - update
   there if a codex version changes this.
+- The `grok` entry in `config/agents.yaml` is built from xAI's published
+  CLI docs but **not verified against a real install** (grok wasn't
+  available in the environment this was built in) - the prompt/effort/
+  resume flags are confirmed by docs.x.ai, but the exact JSON field names
+  (`fields:` in that config) and the read-only flag are best-effort
+  guesses. `GenericCliAgent` degrades gracefully if a field guess is wrong
+  (falls back to raw stdout as the answer), but confirm and fix these
+  once you've actually run it.
 - Forcing `!codex`/`!claude` without also forcing `!model=` reuses the
   current/default mode's model, which may not be a valid model name for
   the agent you just switched to. Pair agent overrides with a model
