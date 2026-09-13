@@ -34,10 +34,16 @@ npm start
 This drops you into a REPL - type prompts like a chat, no need to re-run
 the command per prompt. `/exit` to quit (prints a cost/token summary).
 
-The prompt itself shows what's currently active, e.g. `you [frontend·codex]>`
+The prompt itself shows what's currently active, e.g. `you [frontend·codex·gpt-6-astra]>`
 - also available anytime via:
 - `/status` - active mode, both agents' session ids, cost so far this session
 - `/modes` - every configured mode and its agent/model/effort/permissions
+- **Tab** - cycle through configured modes (whatever you've typed so far is kept)
+- **Shift+Tab** - cycle through models valid for the current agent
+
+Both keys are just quick shortcuts for `/mode <name>` and `!model=<name>` -
+same routing underneath, nothing new to learn. They only work in a real
+terminal (no-op on piped input).
 
 Or one-shot (single prompt, prints result, exits):
 
