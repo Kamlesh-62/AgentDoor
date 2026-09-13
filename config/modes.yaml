@@ -17,7 +17,7 @@ modes:
 
   frontend:
     agent: codex
-    model: gpt-5.1-codex
+    model: gpt-6-astra
     effort: medium
 
   planning:

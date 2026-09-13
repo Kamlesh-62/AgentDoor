@@ -37,12 +37,39 @@ export class CodexAgent implements AgentAdapter {
 
     if (exitCode !== 0) {
       throw new Error(
-        `codex exited with code ${exitCode}: ${stderr.trim() || "(no stderr)"}`,
+        `codex exited with code ${exitCode}: ${extractCodexError(stdout, stderr)}`,
       );
     }
 
     return parseCodexJsonl(stdout);
   }
+}
+
+/**
+ * On failure, the useful message is usually a JSONL "error" or
+ * "turn.failed" event on stdout (e.g. an invalid model name), while
+ * stderr often just carries the harmless "Reading additional input from
+ * stdin..." notice. Prefer the stdout event message; fall back to stderr.
+ */
+function extractCodexError(stdout: string, stderr: string): string {
+  const lines = stdout.split("\n").filter((l) => l.trim().length > 0);
+  for (const line of lines.reverse()) {
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "turn.failed" && event.error?.message) {
+        return String(event.error.message);
+      }
+      if (event.type === "error" && event.message) {
+        return String(event.message);
+      }
+      if (event.item?.type === "error" && event.item.message) {
+        return String(event.item.message);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return stderr.trim() || "(no error detail found in stdout or stderr)";
 }
 
 function parseCodexJsonl(stdout: string): AgentRunResult {
