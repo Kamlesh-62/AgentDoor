@@ -31,10 +31,20 @@ npm run build
 npm start
 ```
 
+This drops you into a REPL - type prompts like a chat, no need to re-run
+the command per prompt. `/exit` to quit (prints a cost/token summary).
+
 Or one-shot (single prompt, prints result, exits):
 
 ```
 npm start -- "why is this database query timing out"
+```
+
+Or, after `npm link`, as a plain global command from anywhere:
+
+```
+agent-router
+agent-router "why is this database query timing out"
 ```
 
 ## How routing works
@@ -51,7 +61,10 @@ Every prompt goes through a chain, first confident answer wins:
    for context) is compared via cosine similarity to each mode's example
    utterances in `config/corpus.yaml`. Confident match -> route there.
    Ambiguous, but you're already in a mode -> stay there (hysteresis, no
-   flip-flopping on a single ambiguous message).
+   flip-flopping on a single ambiguous message). Sticky mode expires after
+   30 minutes of inactivity (configurable in `RoutingStateStore`), so an
+   old manual `/mode` override from a previous session can't silently
+   misroute an unrelated prompt much later.
 3. **LLM escalation** - only when ambiguous AND there's no sticky mode to
    fall back on: a cheap `claude -p` call (haiku) makes the judgment call.
    This is a real, billed call and its cost is tracked as an internal entry.
