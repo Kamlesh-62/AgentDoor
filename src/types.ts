@@ -29,6 +29,10 @@ export interface AgentRunOptions {
   resumeSessionId?: string;
   /** Working directory the agent CLI should operate in. */
   cwd?: string;
+  /** Called with a short, human-readable line as the agent makes progress
+   * (thinking, using a tool, etc.) - purely for live display, never parsed
+   * or relied on for the final result. */
+  onEvent?: (message: string) => void;
 }
 
 /** What an agent adapter reports back after a turn. */

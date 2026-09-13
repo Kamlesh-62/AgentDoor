@@ -6,6 +6,16 @@ export interface SpawnResult {
   exitCode: number | null;
 }
 
+export interface RunCommandOptions {
+  cwd?: string;
+  timeoutMs?: number;
+  /** Called with each complete line of stdout as it arrives, in addition
+   * to (not instead of) the full buffered stdout returned on completion -
+   * lets callers show live progress without changing how the final
+   * output is parsed. */
+  onStdoutLine?: (line: string) => void;
+}
+
 /**
  * Promise wrapper around child_process.spawn. Deliberately does not use a
  * shell (args passed as an array) so prompts containing quotes/newlines
@@ -14,7 +24,7 @@ export interface SpawnResult {
 export function runCommand(
   command: string,
   args: string[],
-  opts: { cwd?: string; timeoutMs?: number } = {},
+  opts: RunCommandOptions = {},
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -24,6 +34,7 @@ export function runCommand(
 
     let stdout = "";
     let stderr = "";
+    let lineBuffer = "";
     let timedOut = false;
 
     const timer = opts.timeoutMs
@@ -33,7 +44,19 @@ export function runCommand(
         }, opts.timeoutMs)
       : null;
 
-    child.stdout.on("data", (chunk) => (stdout += chunk.toString("utf8")));
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString("utf8");
+      stdout += text;
+
+      if (opts.onStdoutLine) {
+        lineBuffer += text;
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() ?? ""; // keep the trailing partial line for next chunk
+        for (const line of lines) {
+          if (line.trim()) opts.onStdoutLine(line);
+        }
+      }
+    });
     child.stderr.on("data", (chunk) => (stderr += chunk.toString("utf8")));
 
     child.on("error", (err) => {
@@ -47,6 +70,9 @@ export function runCommand(
 
     child.on("close", (exitCode) => {
       if (timer) clearTimeout(timer);
+      if (opts.onStdoutLine && lineBuffer.trim()) {
+        opts.onStdoutLine(lineBuffer); // flush any trailing line with no final newline
+      }
       if (timedOut) {
         reject(new Error(`"${command}" timed out after ${opts.timeoutMs}ms`));
         return;

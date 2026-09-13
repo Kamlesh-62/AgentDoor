@@ -16,7 +16,10 @@ export class Dispatcher {
     private readonly cwd?: string,
   ) {}
 
-  async dispatch(decision: RoutingDecision): Promise<AgentRunResult> {
+  async dispatch(
+    decision: RoutingDecision,
+    onEvent?: (message: string) => void,
+  ): Promise<AgentRunResult> {
     const adapter = this.registry.get(decision.agent);
     const resumeSessionId = this.sessionStore.get(decision.agent);
 
@@ -26,6 +29,7 @@ export class Dispatcher {
       effort: decision.effort,
       resumeSessionId,
       cwd: this.cwd,
+      onEvent,
     });
 
     this.sessionStore.set(decision.agent, result.sessionId);

@@ -6,6 +6,7 @@ import type { UsageTracker } from "../usage/UsageTracker.js";
 import type { RoutingStateStore } from "../session/RoutingStateStore.js";
 import { renderStatusLine } from "../ui/StatusLine.js";
 import { renderSessionSummary } from "../ui/SessionSummary.js";
+import { LiveBox } from "../ui/LiveBox.js";
 
 export interface ReplDeps {
   router: Router;
@@ -30,7 +31,11 @@ export async function runTurn(rawPrompt: string, deps: ReplDeps): Promise<void> 
     return;
   }
 
-  const result = await deps.dispatcher.dispatch(decision);
+  const liveBox = new LiveBox();
+  liveBox.start(decision);
+  const result = await deps.dispatcher.dispatch(decision, (message) => liveBox.event(message));
+  liveBox.end();
+
   deps.usageTracker.record({
     agent: decision.agent,
     model: decision.model,

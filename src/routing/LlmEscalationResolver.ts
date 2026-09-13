@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import type { ModeResolver } from "./ModeResolver.js";
 import type { AgentAdapter } from "../agents/AgentAdapter.js";
 import type { UsageTracker } from "../usage/UsageTracker.js";
@@ -25,6 +26,8 @@ export class LlmEscalationResolver implements ModeResolver {
   async resolve(ctx: RoutingContext): Promise<RoutingDecision | null> {
     const modeNames = Object.keys(this.modesFile.modes);
     const prompt = buildClassifierPrompt(modeNames, ctx);
+
+    console.error(chalk.dim("(ambiguous prompt - asking classifier which mode to use...)"));
 
     let resultText: string;
     try {

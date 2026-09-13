@@ -33,6 +33,10 @@ export class CodexAgent implements AgentAdapter {
 
     const { stdout, stderr, exitCode } = await runCommand(this.binary, args, {
       cwd: options.cwd,
+      onStdoutLine: (line) => {
+        const message = describeCodexEvent(line);
+        if (message) options.onEvent?.(message);
+      },
     });
 
     if (exitCode !== 0) {
@@ -42,6 +46,38 @@ export class CodexAgent implements AgentAdapter {
     }
 
     return parseCodexJsonl(stdout);
+  }
+}
+
+/** Turns one raw JSONL line into a short progress message, or null to
+ * suppress it. agent_message is intentionally suppressed here since it's
+ * the final answer text, shown once via the completed result instead of
+ * duplicated during streaming. Unknown item types get a generic
+ * best-effort summary rather than being silently dropped, since codex's
+ * item.type set isn't something this adapter exhaustively enumerates. */
+function describeCodexEvent(line: string): string | null {
+  let event: any;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  switch (event.type) {
+    case "thread.started":
+      return "session started";
+    case "turn.started":
+      return "turn started";
+    case "item.started":
+    case "item.updated":
+    case "item.completed": {
+      const item = event.item;
+      if (!item || item.type === "agent_message") return null;
+      const detail = item.command ?? item.path ?? item.cmd ?? "";
+      return `${item.type}${detail ? `: ${detail}` : ""}`;
+    }
+    default:
+      return null;
   }
 }
 
