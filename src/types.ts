@@ -13,6 +13,12 @@ export interface ModeConfig {
   agent: AgentName;
   model: string;
   effort?: Effort;
+  /** Whether this mode may use tools that run commands or edit files.
+   * Defaults to true (read-only, no Bash/Edit/Write) when omitted - there
+   * is no interactive human to approve a permission prompt when running
+   * headless, so read-only is the safe default. A mode must explicitly
+   * set `readOnly: false` to allow real changes. */
+  readOnly?: boolean;
 }
 
 export interface ModesFile {
@@ -33,6 +39,11 @@ export interface AgentRunOptions {
    * (thinking, using a tool, etc.) - purely for live display, never parsed
    * or relied on for the final result. */
   onEvent?: (message: string) => void;
+  /** true (or omitted) = no command/file-editing tools allowed. false =
+   * this turn may run commands / write files, scoped to cwd. */
+  readOnly?: boolean;
+  /** Aborting this cancels the in-flight CLI subprocess. */
+  signal?: AbortSignal;
 }
 
 /** What an agent adapter reports back after a turn. */
@@ -61,6 +72,7 @@ export interface RoutingDecision {
   agent: AgentName;
   model: string;
   effort?: Effort;
+  readOnly: boolean;
   source: RoutingSource;
   confidence?: number;
   reason?: string;

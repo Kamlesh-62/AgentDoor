@@ -62,6 +62,7 @@ export class LlmEscalationResolver implements ModeResolver {
       agent: cfg.agent,
       model: cfg.model,
       effort: cfg.effort,
+      readOnly: cfg.readOnly ?? true,
       source: "llm-escalation",
       confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined,
       reason: typeof parsed.reason === "string" ? parsed.reason : "llm escalation classification",

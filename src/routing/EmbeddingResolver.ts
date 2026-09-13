@@ -101,6 +101,7 @@ export class EmbeddingResolver implements ModeResolver {
       agent: cfg.agent,
       model: cfg.model,
       effort: cfg.effort,
+      readOnly: cfg.readOnly ?? true,
       source,
       confidence,
       reason,

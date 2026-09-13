@@ -6,6 +6,16 @@ export interface SpawnResult {
   exitCode: number | null;
 }
 
+/** Thrown instead of a generic Error when a command was aborted via
+ * `signal`, so callers can distinguish "user cancelled this" from a real
+ * failure (e.g. skip printing a scary red error for a deliberate cancel). */
+export class CancelledError extends Error {
+  constructor(command: string) {
+    super(`"${command}" was cancelled`);
+    this.name = "CancelledError";
+  }
+}
+
 export interface RunCommandOptions {
   cwd?: string;
   timeoutMs?: number;
@@ -14,6 +24,8 @@ export interface RunCommandOptions {
    * lets callers show live progress without changing how the final
    * output is parsed. */
   onStdoutLine?: (line: string) => void;
+  /** Aborting this kills the subprocess and rejects with CancelledError. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -30,12 +42,18 @@ export function runCommand(
     const child = spawn(command, args, {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
+      signal: opts.signal,
     });
 
     let stdout = "";
     let stderr = "";
     let lineBuffer = "";
     let timedOut = false;
+    let cancelled = opts.signal?.aborted ?? false;
+
+    opts.signal?.addEventListener("abort", () => {
+      cancelled = true;
+    });
 
     const timer = opts.timeoutMs
       ? setTimeout(() => {
@@ -61,6 +79,10 @@ export function runCommand(
 
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);
+      if (cancelled || err.name === "AbortError") {
+        reject(new CancelledError(command));
+        return;
+      }
       reject(
         new Error(
           `Failed to spawn "${command}": ${err.message}. Is it installed and on PATH?`,
@@ -70,6 +92,10 @@ export function runCommand(
 
     child.on("close", (exitCode) => {
       if (timer) clearTimeout(timer);
+      if (cancelled) {
+        reject(new CancelledError(command));
+        return;
+      }
       if (opts.onStdoutLine && lineBuffer.trim()) {
         opts.onStdoutLine(lineBuffer); // flush any trailing line with no final newline
       }

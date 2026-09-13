@@ -24,9 +24,13 @@ export class ClaudeAgent implements AgentAdapter {
     if (options.model) args.push("--model", options.model);
     if (options.effort) args.push("--effort", options.effort);
     if (options.resumeSessionId) args.push("--resume", options.resumeSessionId);
+    // No human available to approve tool-permission prompts headlessly -
+    // read-only (default true) strips Bash/Edit/Write etc. entirely.
+    if (options.readOnly !== false) args.push("--restricted");
 
     const { stdout, stderr, exitCode } = await runCommand(this.binary, args, {
       cwd: options.cwd,
+      signal: options.signal,
       onStdoutLine: (line) => {
         const message = describeClaudeEvent(line);
         if (message) options.onEvent?.(message);

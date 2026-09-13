@@ -15,6 +15,7 @@ export class DefaultResolver implements ModeResolver {
       agent: cfg.agent,
       model: cfg.model,
       effort: cfg.effort,
+      readOnly: cfg.readOnly ?? true,
       source: "default",
       reason: "no override, confident semantic match, or escalation result - using default mode",
       cleanedPrompt: ctx.rawPrompt,

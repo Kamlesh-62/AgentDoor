@@ -30,9 +30,14 @@ export class CodexAgent implements AgentAdapter {
     args.push("--json", "--skip-git-repo-check");
     if (options.model) args.push("--model", options.model);
     if (options.effort) args.push("-c", `model_reasoning_effort=${options.effort}`);
+    // No human available to approve command/file-edit prompts headlessly -
+    // read-only (default true) keeps codex from writing or running
+    // anything outside its own sandboxed read access.
+    args.push("--sandbox", options.readOnly !== false ? "read-only" : "workspace-write");
 
     const { stdout, stderr, exitCode } = await runCommand(this.binary, args, {
       cwd: options.cwd,
+      signal: options.signal,
       onStdoutLine: (line) => {
         const message = describeCodexEvent(line);
         if (message) options.onEvent?.(message);

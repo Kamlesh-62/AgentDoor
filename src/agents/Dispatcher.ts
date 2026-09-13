@@ -19,6 +19,7 @@ export class Dispatcher {
   async dispatch(
     decision: RoutingDecision,
     onEvent?: (message: string) => void,
+    signal?: AbortSignal,
   ): Promise<AgentRunResult> {
     const adapter = this.registry.get(decision.agent);
     const resumeSessionId = this.sessionStore.get(decision.agent);
@@ -30,6 +31,8 @@ export class Dispatcher {
       resumeSessionId,
       cwd: this.cwd,
       onEvent,
+      readOnly: decision.readOnly,
+      signal,
     });
 
     this.sessionStore.set(decision.agent, result.sessionId);

@@ -6,6 +6,7 @@ interface ParsedOverrides {
   agent?: AgentName;
   model?: string;
   effort?: Effort;
+  write?: boolean;
   rest: string;
 }
 
@@ -13,8 +14,9 @@ const MODEL_OVERRIDE = /^!model[:=]?\s*(\S+)\s*/i;
 const EFFORT_OVERRIDE = /^!effort[:=]?\s*(low|medium|high|xhigh|max)\s*/i;
 const AGENT_OVERRIDE = /^!(claude|codex)\s*/i;
 const MODE_OVERRIDE = /^\/mode\s+(\S+)\s*/i;
+const WRITE_OVERRIDE = /^!write\s*/i;
 
-/** Strips leading override tokens (e.g. "/mode backend", "!codex", "!effort high")
+/** Strips leading override tokens (e.g. "/mode backend", "!codex", "!effort high", "!write")
  * from the start of a prompt, applying each as it's found. */
 function parseOverrides(raw: string): ParsedOverrides {
   const acc: ParsedOverrides = { rest: raw.trim() };
@@ -54,6 +56,14 @@ function parseOverrides(raw: string): ParsedOverrides {
       changed = true;
       continue;
     }
+
+    m = acc.rest.match(WRITE_OVERRIDE);
+    if (m) {
+      acc.write = true;
+      acc.rest = acc.rest.slice(m[0].length);
+      changed = true;
+      continue;
+    }
   }
 
   return acc;
@@ -66,6 +76,9 @@ function parseOverrides(raw: string): ParsedOverrides {
  *   !claude / !codex - force the agent for this turn only
  *   !model=opus      - force the model for this turn only
  *   !effort=high     - force the effort for this turn only
+ *   !write           - allow this turn to run commands/edit files, even if
+ *                       the mode is read-only by default (this turn only,
+ *                       does not change the mode's stored config)
  * Returns null (declines) only when the prompt has no override tokens at all.
  */
 export class OverrideResolver implements ModeResolver {
@@ -74,7 +87,7 @@ export class OverrideResolver implements ModeResolver {
   async resolve(ctx: RoutingContext): Promise<RoutingDecision | null> {
     const parsed = parseOverrides(ctx.rawPrompt);
     const hasOverride = Boolean(
-      parsed.explicitMode || parsed.agent || parsed.model || parsed.effort,
+      parsed.explicitMode || parsed.agent || parsed.model || parsed.effort || parsed.write,
     );
     if (!hasOverride) return null;
 
@@ -92,6 +105,7 @@ export class OverrideResolver implements ModeResolver {
       agent: parsed.agent ?? baseMode.agent,
       model: parsed.model ?? baseMode.model,
       effort: parsed.effort ?? baseMode.effort,
+      readOnly: parsed.write ? false : (baseMode.readOnly ?? true),
       source: "override",
       reason: describeOverride(parsed),
       cleanedPrompt: parsed.rest,
@@ -105,5 +119,6 @@ function describeOverride(parsed: ParsedOverrides): string {
   if (parsed.agent) parts.push(`agent=${parsed.agent}`);
   if (parsed.model) parts.push(`model=${parsed.model}`);
   if (parsed.effort) parts.push(`effort=${parsed.effort}`);
+  if (parsed.write) parts.push("write=true");
   return `manual override (${parts.join(", ")})`;
 }
