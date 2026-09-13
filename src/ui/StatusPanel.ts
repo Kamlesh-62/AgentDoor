@@ -56,6 +56,7 @@ export function renderModes(modesFile: ModesFile): string {
       cfg.model,
       cfg.effort ? `effort:${cfg.effort}` : null,
       cfg.readOnly === false ? chalk.yellow("write-enabled") : null,
+      cfg.expensive ? chalk.magenta("confirmed-before-switch") : null,
     ].filter(Boolean);
     lines.push(`  ${name.padEnd(10)} ${tags.join(" · ")}${isDefault ? chalk.dim("  (default)") : ""}`);
   }

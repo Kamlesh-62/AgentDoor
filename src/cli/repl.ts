@@ -163,6 +163,18 @@ function redrawPrompt(rl: ReturnType<typeof createInterface>, deps: ReplDeps, no
   }
 }
 
+/** Prompts again only if the interface is still open. With piped input,
+ * stdin can finish and close the interface WHILE a slow turn is still
+ * running - by the time that turn's response prints, rl.prompt() would
+ * throw "readline was closed" instead of being a no-op. Since there's no
+ * more input coming once closed anyway, skipping is exactly correct, not
+ * just a crash-avoidance shrug. */
+function safePrompt(rl: ReturnType<typeof createInterface>): void {
+  // `closed` exists at runtime (verified: undefined until close(), then
+  // true) but isn't in this Node's @types/node yet - hence the cast.
+  if (!(rl as unknown as { closed?: boolean }).closed) rl.prompt();
+}
+
 export async function startRepl(deps: ReplDeps): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -202,7 +214,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
   for await (const rawLine of rl) {
     const line = rawLine.trim();
     if (!line) {
-      rl.prompt();
+      safePrompt(rl);
       continue;
     }
     if (line === "/exit" || line === "/quit") break;
@@ -214,12 +226,12 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
           "\n",
       );
       rl.setPrompt(buildPrompt(deps));
-      rl.prompt();
+      safePrompt(rl);
       continue;
     }
     if (line === "/modes") {
       console.log("\n" + renderModes(deps.modesFile) + "\n");
-      rl.prompt();
+      safePrompt(rl);
       continue;
     }
 
@@ -235,7 +247,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       currentController = null;
     }
     rl.setPrompt(buildPrompt(deps)); // reflects any mode change from this turn
-    rl.prompt();
+    safePrompt(rl);
   }
 
   rl.close();

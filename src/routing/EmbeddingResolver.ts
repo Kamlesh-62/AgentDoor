@@ -76,6 +76,17 @@ export class EmbeddingResolver implements ModeResolver {
       }
     }
 
+    // Confident isn't the same as correct: this resolver being confidently
+    // WRONG (not just ambiguous) is exactly the failure mode that let a
+    // "$0.35 for a failed turn" mistake through. So switching INTO an
+    // expensive mode gets a cheap second opinion first, rather than being
+    // trusted outright the way switching into a cheap mode is. Already
+    // being in that mode (continuing, not switching) skips this - no
+    // point re-confirming every single turn of an ongoing conversation.
+    if (this.modesFile.modes[top.mode]?.expensive && top.mode !== ctx.currentMode) {
+      return null;
+    }
+
     return this.buildDecision(
       top.mode,
       ctx.rawPrompt,

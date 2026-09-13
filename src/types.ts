@@ -19,6 +19,13 @@ export interface ModeConfig {
    * headless, so read-only is the safe default. A mode must explicitly
    * set `readOnly: false` to allow real changes. */
   readOnly?: boolean;
+  /** True for modes expensive enough that a confidently-wrong semantic
+   * match still shouldn't auto-commit to them - EmbeddingResolver declines
+   * (defers to LLM escalation for a second opinion) when it's about to
+   * switch INTO such a mode, though it keeps trusting itself once you're
+   * already there (no re-confirmation every turn). Manual override always
+   * bypasses this, since that's deliberate user intent either way. */
+  expensive?: boolean;
 }
 
 export interface ModesFile {

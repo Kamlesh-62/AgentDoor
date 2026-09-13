@@ -6,6 +6,11 @@
 # model: passed straight to the CLI's --model / -m flag (alias or full name)
 # effort: only meaningfully applied to claude today (--effort). Ignored
 #         (logged, not passed) for codex until its effort mapping is confirmed.
+# expensive: true means EmbeddingResolver won't auto-switch into this mode
+#            on a confident-but-unconfirmed semantic match alone - it defers
+#            to the cheap LLM classifier for a second opinion first. Set
+#            this on any mode costly enough that a wrong guess is expensive
+#            (opus, high effort, etc).
 
 default: quick
 
@@ -24,6 +29,7 @@ modes:
     agent: claude
     model: opus
     effort: high
+    expensive: true
 
   quick:
     agent: claude
