@@ -23,25 +23,48 @@ raw API key.
 ## Install
 
 ```
+npm install -g @kamlesh-62/agentdoor
+```
+
+That gives you the `agentdoor` command from anywhere. First run copies the
+default config (`modes.yaml`, `agents.yaml`, `corpus.yaml`, `pricing.yaml`)
+into `~/.agentdoor/config` - edit it there; edits survive reinstalls/updates
+(a later update never overwrites a file you already have - see
+"Configuration" below). Session state and the usage log live alongside it in
+`~/.agentdoor/data`.
+
+Working on AgentDoor itself instead? Clone the repo and use:
+
+```
 npm install
-npm run build
+npm run dev -- "why is this database query timing out"   # reads/writes ./config and ./data directly
+npm run build && npm start                                # smoke-tests the real ~/.agentdoor path, as a real install would
 ```
 
 ## Run
 
 ```
-npm start
+agentdoor
 ```
 
 This drops you into a REPL - type prompts like a chat, no need to re-run
 the command per prompt. `/exit` to quit (prints a cost/token summary).
 
-The prompt itself shows what's currently active, e.g. `you [frontend·codex·gpt-6-astra]>`
+The prompt itself shows what's currently active, e.g. `○ frontend codex/gpt-6-astra ›`
+- the dot is hollow when the mode is read-only, filled red when it can run
+  commands or edit files (see "Tool permissions" below)
 - also available anytime via:
 - `/status` - active mode, both agents' session ids, cost so far this session
 - `/modes` - every configured mode and its agent/model/effort/permissions
 - **Tab** - cycle through configured modes (whatever you've typed so far is kept)
 - **Shift+Tab** - cycle through models valid for the current agent
+- **Ctrl+X** - clear whatever you've typed so far, in one keystroke
+- end a line with **`\`** - keep writing on the next line instead of
+  submitting (terminals can't reliably tell Enter and Shift+Enter apart,
+  so this is the portable equivalent - same convention a shell uses)
+- a long paste collapses to a placeholder (`«pasted N chars»`); paste
+  again to reveal the real text - it's always what gets sent, never the
+  placeholder
 
 Both keys are just quick shortcuts for `/mode <name>` and `!model=<name>` -
 same routing underneath, nothing new to learn. They only work in a real
@@ -50,13 +73,6 @@ terminal (no-op on piped input).
 Or one-shot (single prompt, prints result, exits):
 
 ```
-npm start -- "why is this database query timing out"
-```
-
-Or, after `npm link`, as a plain global command from anywhere:
-
-```
-agentdoor
 agentdoor "why is this database query timing out"
 ```
 
@@ -112,19 +128,28 @@ doesn't lose your session.
 
 ## Configuration
 
-- `config/modes.yaml` - named presets: `{agent, model, effort, readOnly,
+Lives in `~/.agentdoor/config` (seeded on first run from the package's
+defaults - see "Install"). Running from a repo checkout via `npm run dev`
+reads/writes the repo's own `./config` instead, so editing it there takes
+effect immediately without touching `~/.agentdoor`.
+
+- `modes.yaml` - named presets: `{agent, model, effort, readOnly,
   expensive}` per mode, plus which mode is the default. Richly commented
   with when-to-use-which-model guidance (Anthropic's own published Sonnet/
   Opus/Haiku guidance, summarized inline) - read it before adding a mode.
-- `config/agents.yaml` - which agents exist: `claude`/`codex` (real
+- `agents.yaml` - which agents exist: `claude`/`codex` (real
   classes) plus anything under `generic:` (config-only, see "Adding a new
   agent"). This is the actual "add any model" surface.
-- `config/corpus.yaml` - example utterances per mode, used for semantic
+- `corpus.yaml` - example utterances per mode, used for semantic
   routing. Add more real examples over time; no keywords/regex needed.
-- `config/pricing.yaml` - approximate $/1M token rates, used to estimate
+- `pricing.yaml` - approximate $/1M token rates, used to estimate
   cost when an agent doesn't report it directly (Codex doesn't; Claude does).
 
-## What gets persisted (in `data/`, gitignored)
+A package update ships new defaults but never overwrites a file you've
+already customized; to pick up a changed default, delete that one file from
+`~/.agentdoor/config` and it's reseeded on next run.
+
+## What gets persisted (in `~/.agentdoor/data`)
 
 - `sessions.json` - `{claude: sessionId, codex: sessionId}`, so returning to
   an agent resumes its own native conversation memory.
