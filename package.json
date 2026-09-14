@@ -1,16 +1,48 @@
 {
-  "name": "agentdoor",
+  "name": "@kamlesh-62/agentdoor",
   "version": "0.1.0",
-  "description": "A local middleman CLI that routes prompts between the claude and codex terminal CLIs, picking agent/model/effort by mode + semantic similarity, tracking sessions and cost.",
+  "description": "A local middleman CLI that routes prompts across your terminal AI CLIs (claude, codex, or any CLI you configure), picking agent/model/effort by mode + semantic similarity, tracking sessions and cost.",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "author": "Kamlesh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kamlesh-62/AgentDoor.git"
+  },
+  "homepage": "https://github.com/Kamlesh-62/AgentDoor#readme",
+  "bugs": {
+    "url": "https://github.com/Kamlesh-62/AgentDoor/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "agent",
+    "router",
+    "claude",
+    "codex",
+    "llm",
+    "middleman"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "agentdoor": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "config",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "AGENTDOOR_CONFIG_DIR=$PWD/config AGENTDOOR_DATA_DIR=$PWD/data tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
     "routing-check": "node scripts/routing-check.mjs"
   },
   "dependencies": {

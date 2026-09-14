@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import chalk from "chalk";
 
 import { loadModes } from "./config/loadModes.js";
@@ -32,10 +34,47 @@ import { renderSessionSummary } from "./ui/SessionSummary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, ".."); // dist/ or src/ (via tsx) -> project root
-const CONFIG_DIR = join(ROOT, "config");
-const DATA_DIR = join(ROOT, "data");
+
+// Packaged config (config/*.yaml shipped inside dist/../config) is the
+// read-only source of defaults. Actual config + runtime data always live
+// under the user's home directory instead of inside the package install
+// - required for a global `npm install -g`, where the package directory
+// is often unwritable without sudo, gets wiped on every update, and (on
+// a shared machine) would otherwise mix every user's session/cost data
+// into one file. Same paths whether running from a repo checkout via
+// `npm start` or from a real global install - one behavior, no "dev
+// mode" special-casing to keep in sync.
+const PACKAGED_CONFIG_DIR = join(ROOT, "config");
+const USER_DIR = join(homedir(), ".agentdoor");
+
+// AGENTDOOR_CONFIG_DIR / AGENTDOOR_DATA_DIR are an escape hatch, not a
+// user-facing feature: `npm run dev` sets AGENTDOOR_CONFIG_DIR to the
+// repo's own config/ so editing config/modes.yaml while developing takes
+// effect immediately, same as before this change - without it, every run
+// would seed-and-then-ignore the repo copy in favor of ~/.agentdoor.
+const CONFIG_DIR = process.env.AGENTDOOR_CONFIG_DIR ?? join(USER_DIR, "config");
+const DATA_DIR = process.env.AGENTDOOR_DATA_DIR ?? join(USER_DIR, "data");
+
+/** First run (or an update that ships a new default file): copies
+ * whatever's missing from the packaged defaults into the user's config
+ * dir. Never overwrites a file the user already has - edits in
+ * ~/.agentdoor/config survive both restarts and package updates. To pick
+ * up a changed packaged default, delete the file in ~/.agentdoor/config
+ * and it'll be reseeded on next run. Skipped entirely when
+ * AGENTDOOR_CONFIG_DIR points somewhere else - seeding only makes sense
+ * for the default user dir. */
+function ensureUserConfig(): void {
+  if (process.env.AGENTDOOR_CONFIG_DIR) return;
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  for (const file of readdirSync(PACKAGED_CONFIG_DIR)) {
+    const dest = join(CONFIG_DIR, file);
+    if (!existsSync(dest)) copyFileSync(join(PACKAGED_CONFIG_DIR, file), dest);
+  }
+}
 
 async function main() {
+  ensureUserConfig();
+
   const modesFile = loadModes(join(CONFIG_DIR, "modes.yaml"));
   const corpus = loadCorpus(join(CONFIG_DIR, "corpus.yaml"));
   const pricing = loadPricing(join(CONFIG_DIR, "pricing.yaml"));
