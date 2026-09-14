@@ -86,12 +86,23 @@ export async function runTurn(
   console.log(renderStatusLine(decision, result));
 }
 
-/** Builds the prompt as a "chip": an agent-colored dot, the current
- * mode·agent·model, and a divider - the terminal-native version of the
- * composer's mode chip + edge accent (a box can't wrap live input in a
- * readline prompt, so the color+divider carries the same "this is where
- * it's headed" cue a glowing edge would in a browser). No mode set yet
- * falls back to a plain, undecorated prompt - there's nothing to show. */
+/** Builds the prompt as a small status chip ahead of the cursor. Three
+ * pieces of state matter here, and they're deliberately NOT given equal
+ * weight (the old design joined mode·agent·model in one color via middle
+ * dots, which reads as one blob and buries the one fact that's actually
+ * consequential to notice before typing):
+ *
+ *  - the dot is read-only vs. write-capable (see README "Tool
+ *    permissions") - hollow/dim when this mode can only look, filled/red
+ *    when it can run commands or edit files. That's the one thing worth
+ *    a glance on every turn, so it gets the one semantic (non-brand)
+ *    color on the line, matching how SIGINT notices already use
+ *    chalk.yellow rather than a custom hex for system state.
+ *  - the mode name stays dim - it's context, not the actor.
+ *  - agent/model is the actual actor, so it's the only agent-colored text.
+ *
+ * No mode set yet falls back to a plain, undecorated prompt - there's
+ * nothing to show. */
 function buildPrompt(deps: ReplDeps): string {
   const mode = deps.stateStore.activeMode;
   if (!mode) return chalk.dim("› ");
@@ -101,8 +112,10 @@ function buildPrompt(deps: ReplDeps): string {
 
   const color = agentColor(cfg.agent);
   const model = deps.stateStore.modelOverride ?? cfg.model;
-  const chip = [mode, cfg.agent, model].join("·");
-  return color("●") + " " + color(chip) + chalk.dim(" │ ");
+  const readOnly = cfg.readOnly ?? true;
+  const dot = readOnly ? chalk.dim("○") : chalk.red("●");
+
+  return `${dot} ${chalk.dim(mode)} ${color(`${cfg.agent}/${model}`)} ${chalk.dim("›")} `;
 }
 
 const HELP_TEXT = [
@@ -117,7 +130,94 @@ const HELP_TEXT = [
   "  !write           allow this turn to run commands/edit files",
   "  /exit            quit (prints cost summary)",
   "Ctrl+C cancels the current turn; press it twice quickly while idle to exit.",
+  "Ctrl+X clears whatever you've typed so far, in one keystroke.",
+  "A long paste collapses to a placeholder; paste again to reveal it.",
+  "End a line with \\ to keep writing on the next line before submitting.",
 ].join("\n");
+
+const PASTE_COLLAPSE_THRESHOLD = 40;
+
+interface PasteCollapser {
+  /** Swaps a still-collapsed placeholder back to the real pasted text.
+   * Called right before a submitted line is dispatched, so the agent
+   * always sees what was actually pasted - never the placeholder. */
+  expand(line: string): string;
+}
+
+/**
+ * Collapses a long paste into a one-line placeholder (`«pasted N
+ * chars»`) instead of dumping a wall of text into the prompt, and
+ * expands it back either on a second paste (a "let me see that again"
+ * gesture) or right before the line is submitted.
+ *
+ * Deliberately scoped to single-line pastes only (no embedded newline in
+ * the pasted chunk). Node's `readline` has no built-in awareness of
+ * bracketed-paste markers, so a paste containing a newline already
+ * submits early today, one "line" at a time, exactly as if it had been
+ * typed by hand with Enter pressed partway through - that's pre-existing
+ * behavior this doesn't touch. Handling that properly means intercepting
+ * raw paste bytes before readline ever decodes them (detaching its stdin
+ * listener mid-paste); this stays out of that territory entirely, so it
+ * can't regress paste/typing that already works.
+ *
+ * Detection is a size heuristic, not a paste-specific signal: any single
+ * "data" chunk at or above PASTE_COLLAPSE_THRESHOLD chars, with no
+ * newline or escape byte in it, is treated as a paste. A human typing
+ * that fast in one chunk is not a realistic false positive.
+ */
+function setupPasteCollapsing(
+  rl: ReturnType<typeof createInterface>,
+  input: NodeJS.ReadStream,
+): PasteCollapser {
+  let pending: { placeholder: string; text: string } | null = null;
+  if (!input.isTTY) return { expand: (line) => line };
+
+  // Registered after createInterface() already attached its own "data"
+  // listener, so by the time this runs, readline has already inserted
+  // the chunk into its line buffer and redrawn - this only ever swaps
+  // already-inserted text for a placeholder, never intercepts input.
+  input.on("data", (chunk: Buffer | string) => {
+    const text = chunk.toString("utf8");
+    if (text.length < PASTE_COLLAPSE_THRESHOLD) return;
+    if (/[\n\r\x1b]/.test(text)) return; // multi-line or a control sequence - leave to readline as-is
+
+    const line = rl as unknown as { line: string; cursor: number; _refreshLine?: () => void };
+
+    // A second paste while a placeholder from the first is still in the
+    // line: reveal it instead of collapsing this new chunk on top of it.
+    // The newly-inserted chunk is discarded (it's redundant - pasting the
+    // same clipboard content again would just duplicate what "text" here
+    // already holds it as).
+    if (pending && line.line.includes(pending.placeholder)) {
+      const insertStart = line.cursor - text.length;
+      if (line.line.slice(insertStart, line.cursor) !== text) return; // unexpected state - fail open
+      const withoutChunk = line.line.slice(0, insertStart) + line.line.slice(line.cursor);
+      const phIdx = withoutChunk.indexOf(pending.placeholder);
+      if (phIdx === -1) return;
+      line.line = withoutChunk.slice(0, phIdx) + pending.text + withoutChunk.slice(phIdx + pending.placeholder.length);
+      line.cursor = phIdx + pending.text.length;
+      pending = null;
+      line._refreshLine?.();
+      return;
+    }
+
+    const insertStart = line.cursor - text.length;
+    if (line.line.slice(insertStart, line.cursor) !== text) return; // unexpected state - fail open
+
+    const placeholder = `«pasted ${text.length} chars»`;
+    line.line = line.line.slice(0, insertStart) + placeholder + line.line.slice(line.cursor);
+    line.cursor = insertStart + placeholder.length;
+    pending = { placeholder, text };
+    line._refreshLine?.();
+  });
+
+  return {
+    expand: (submitted) => {
+      if (!pending || !submitted.includes(pending.placeholder)) return submitted;
+      return submitted.replace(pending.placeholder, pending.text);
+    },
+  };
+}
 
 /**
  * Tab cycles through configured modes; Shift+Tab cycles through models
@@ -138,7 +238,22 @@ function setupQuickSwitchKeys(rl: ReturnType<typeof createInterface>, deps: Repl
   input.setRawMode(true);
 
   input.on("keypress", (_str, key) => {
-    if (!key || key.name !== "tab") return;
+    if (!key) return;
+
+    // One-shot "clear the whole line" - the terminal equivalent of
+    // select-all + delete. Ctrl+X is unbound by Node's readline defaults
+    // (unlike Ctrl+U, which only kills from the cursor back to the start),
+    // so this adds a shortcut instead of silently changing one you're
+    // already relying on.
+    if (key.ctrl && key.name === "x") {
+      const line = rl as unknown as { line: string; cursor: number; _refreshLine?: () => void };
+      line.line = "";
+      line.cursor = 0;
+      line._refreshLine?.();
+      return;
+    }
+
+    if (key.name !== "tab") return;
 
     if (key.shift) {
       const modeName = deps.stateStore.activeMode ?? deps.modesFile.default;
@@ -230,12 +345,37 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
   });
 
   setupQuickSwitchKeys(rl, deps);
+  const pasteCollapser = setupPasteCollapsing(rl, process.stdin);
 
   console.log(chalk.dim(HELP_TEXT) + "\n");
   rl.prompt();
 
+  // Holds lines-so-far while a backslash-continued prompt is being typed;
+  // null means "not currently continuing".
+  let continuation: string | null = null;
+
   for await (const rawLine of rl) {
-    const line = rawLine.trim();
+    const piece = pasteCollapser.expand(rawLine.trim());
+
+    // A trailing "\" means "more coming" instead of submit - the same
+    // line-continuation convention a shell uses. This is the practical
+    // stand-in for Shift+Enter: terminals send the same byte for Enter
+    // and Shift+Enter (there's no reliable way to tell them apart across
+    // terminals), but every terminal can type a literal backslash, so
+    // this works everywhere rather than only on terminals that happen to
+    // support an extended keyboard protocol.
+    if (piece.endsWith("\\")) {
+      const withoutBackslash = piece.slice(0, -1).trimEnd();
+      continuation = continuation === null ? withoutBackslash : `${continuation}\n${withoutBackslash}`;
+      rl.setPrompt(chalk.dim("… "));
+      rl.prompt();
+      continue;
+    }
+
+    const line = continuation === null ? piece : `${continuation}\n${piece}`;
+    continuation = null;
+    rl.setPrompt(buildPrompt(deps)); // back to the normal chip now that continuation (if any) is over
+
     if (!line) {
       safePrompt(rl);
       continue;
@@ -248,7 +388,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
           renderStatus(deps.modesFile, deps.stateStore, deps.sessionStore, deps.usageTracker) +
           "\n",
       );
-      rl.setPrompt(buildPrompt(deps));
       safePrompt(rl);
       continue;
     }
